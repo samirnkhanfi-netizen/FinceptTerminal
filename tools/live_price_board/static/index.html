@@ -40,9 +40,17 @@
 
   <!-- ── Macro tab ─────────────────────────────────────────────────── -->
   <section id="tab-macro" class="tab-panel">
-    <p class="hint">Market-based macro proxies (indices, yields, FX, commodities) grouped by region &mdash; not official
-      statistical releases (CPI/GDP/NFP). Click any row for its chart.</p>
+    <h2 class="section-title">Market Signals</h2>
+    <p class="hint">Market-based macro proxies (indices, yields, FX, commodities) grouped by region. Click any row for its chart.</p>
     <div id="macro-groups"></div>
+
+    <h2 class="section-title">Statistical Releases</h2>
+    <div class="editbar">
+      <span class="hint inline">Official government-reported figures via World Bank Open Data &mdash; GDP growth, inflation (CPI), unemployment.</span>
+      <button id="stats-refresh" class="ghost">Refresh</button>
+    </div>
+    <p id="stats-status" class="hint"></p>
+    <div id="stats-groups"></div>
   </section>
 
   <!-- ── Correlation tab ──────────────────────────────────────────── -->

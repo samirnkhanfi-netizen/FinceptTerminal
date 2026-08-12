@@ -78,11 +78,24 @@ td.err { color: var(--text-tertiary); font-style: italic; }
 .hint.inline { margin: 0; }
 
 /* ── Macro tab ── */
+.section-title {
+  font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--text-primary); border-bottom: 1px solid var(--border-dim); padding-bottom: 6px;
+  margin: 24px 0 12px;
+}
+.section-title:first-child { margin-top: 0; }
 .macro-group { margin-bottom: 20px; }
 .macro-group h2 {
   font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
   color: var(--accent); margin: 0 0 6px;
 }
+.stats-group { margin-bottom: 18px; }
+.stats-group h3 {
+  font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--accent); margin: 0 0 6px;
+}
+td.stat-null { color: var(--text-tertiary); }
+.stat-date { font-size: 10px; color: var(--text-tertiary); display: block; font-weight: 400; margin-top: 2px; }
 
 /* ── Correlation tab ── */
 .scroll-x { overflow-x: auto; }

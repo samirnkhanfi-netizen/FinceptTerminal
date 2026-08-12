@@ -8,8 +8,10 @@ script (fincept-qt/scripts/yfinance_data.py — the same module
 MarketDataService.cpp calls via its Python worker) instead of
 re-implementing fetching, so this stays in sync with whatever data
 source/fields the desktop app uses. Macro region groupings and the
-correlation matrix live in regions.py, kept separate from yfinance_data.py
-so this tool's extra surface never touches the production Qt app's script.
+correlation matrix live in regions.py; true statistical-release data (GDP
+growth, inflation, unemployment — via fincept-qt/scripts/worldbank_data.py)
+lives in econ_stats.py. Both are kept separate from yfinance_data.py so
+this tool's extra surface never touches the production Qt app's script.
 
 Run:
     python server.py [--port 8765] [--interval 5]
@@ -51,6 +53,7 @@ except ImportError as exc:  # pragma: no cover - startup guard, not a runtime pa
     raise
 
 import regions  # local module: macro groupings + correlation math
+import econ_stats  # local module: World Bank statistical-release data (not stdlib `statistics` — name avoided deliberately)
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(THIS_DIR, "static")
@@ -239,8 +242,8 @@ def _parse_period_interval(qs):
     return period, interval
 
 
-def make_handler(watchlist, quote_cache, history_cache, detail_cache, macro_cache, corr_cache, refresh_interval_ms,
-                  macro_interval_ms):
+def make_handler(watchlist, quote_cache, history_cache, detail_cache, macro_cache, corr_cache, stats_cache,
+                  refresh_interval_ms, macro_interval_ms):
     class Handler(BaseHTTPRequestHandler):
         server_version = "FinceptLivePriceBoard/2.0"
 
@@ -347,6 +350,9 @@ def make_handler(watchlist, quote_cache, history_cache, detail_cache, macro_cach
                 payload, fetched_at = corr_cache.get(
                     key, lambda: regions.get_correlation_matrix(stock_symbols, macro_symbols, period), force=force)
                 self._send_json({**payload, "fetched_at": datetime.fromtimestamp(fetched_at, tz=timezone.utc).isoformat()})
+            elif path == "/api/statistics":
+                payload, fetched_at = stats_cache.get("all", econ_stats.get_statistics, force=force)
+                self._send_json({**payload, "fetched_at": datetime.fromtimestamp(fetched_at, tz=timezone.utc).isoformat()})
             else:
                 self._send_json({"error": "not found"}, status=404)
 
@@ -392,6 +398,11 @@ def main():
         help="macro tab refresh cadence in seconds (default: 15 — a ~20-symbol batch, refreshed gentler than the watchlist)",
     )
     parser.add_argument(
+        "--stats-interval", type=float, default=3600.0,
+        help="statistical-release (World Bank) cache lifetime in seconds (default: 3600 — these update at most "
+             "daily/annually, so re-querying every page load would just hammer the API for an unchanged answer)",
+    )
+    parser.add_argument(
         "--symbols", default=None,
         help="comma-separated initial symbol list, only used the first time watchlist.json is created",
     )
@@ -406,9 +417,10 @@ def main():
     detail_cache = TTLCache(ttl_seconds=30.0)
     macro_cache = TTLCache(ttl_seconds=args.macro_interval)
     corr_cache = TTLCache(ttl_seconds=60.0)
+    stats_cache = TTLCache(ttl_seconds=args.stats_interval)
 
     handler = make_handler(
-        watchlist, quote_cache, history_cache, detail_cache, macro_cache, corr_cache,
+        watchlist, quote_cache, history_cache, detail_cache, macro_cache, corr_cache, stats_cache,
         refresh_interval_ms=int(args.interval * 1000), macro_interval_ms=int(args.macro_interval * 1000),
     )
 

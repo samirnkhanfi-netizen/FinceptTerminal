@@ -6,6 +6,7 @@ let macroMs = 15000;
 let activeTab = "watchlist";
 let macroLoadedOnce = false;
 let corrLoadedOnce = false;
+let statsLoadedOnce = false;
 let macroNameBySymbol = {};
 let currentDetailSymbol = null;
 let currentDetailPeriod = "6mo";
@@ -48,6 +49,7 @@ function setupTabs() {
       document.querySelectorAll(".tab-panel").forEach((p) => p.classList.toggle("active", p.id === "tab-" + tab));
       activeTab = tab;
       if (tab === "macro" && !macroLoadedOnce) loadMacro(false);
+      if (tab === "macro" && !statsLoadedOnce) loadStatistics(false);
       if (tab === "correlation" && !corrLoadedOnce) loadCorrelation(false);
     });
   });
@@ -175,6 +177,59 @@ function renderMacro(data) {
       tr.appendChild(el("td", { text: fmt(q.price, 2) }));
       tr.appendChild(el("td", { cls: changeCls, text: (q.change >= 0 ? "+" : "") + fmt(q.change, 2) }));
       tr.appendChild(el("td", { cls: changeCls, text: (q.change_percent >= 0 ? "+" : "") + fmt(q.change_percent, 2) + "%" }));
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    container.appendChild(wrap);
+  }
+}
+
+// ── Statistical releases (World Bank) ────────────────────────────────────
+async function loadStatistics(force) {
+  const statusEl2 = document.getElementById("stats-status");
+  statusEl2.textContent = "loading…";
+  try {
+    const res = await fetch("/api/statistics" + (force ? "?force=1" : ""));
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "http " + res.status);
+    renderStatistics(data);
+    statsLoadedOnce = true;
+    const asOf = new Date(data.fetched_at).toLocaleTimeString();
+    statusEl2.textContent = data.error ? `${data.source} — fetched ${asOf} (partial: ${data.error})` : `${data.source} — fetched ${asOf}`;
+  } catch (e) {
+    statusEl2.textContent = "failed: " + e.message;
+  }
+}
+
+function renderStatistics(data) {
+  const container = document.getElementById("stats-groups");
+  container.textContent = "";
+  for (const [region, rows] of Object.entries(data.groups)) {
+    const wrap = el("div", { cls: "stats-group" });
+    wrap.appendChild(el("h3", { text: region }));
+    const table = el("table", { cls: "data-table" });
+    const thead = el("thead");
+    const headRow = el("tr");
+    headRow.appendChild(el("th", { text: "Country" }));
+    for (const ind of data.indicator_labels) headRow.appendChild(el("th", { text: ind.label }));
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+    const tbody = el("tbody");
+    for (const row of rows) {
+      const tr = el("tr");
+      tr.appendChild(el("td", { cls: "symbol", text: row.country_name }));
+      for (const ind of row.indicators) {
+        const td = el("td");
+        if (ind.value === null || ind.value === undefined) {
+          td.className = "stat-null";
+          td.textContent = "—";
+        } else {
+          td.appendChild(el("span", { text: fmt(ind.value, 1) + (ind.unit || "") }));
+          if (ind.date) td.appendChild(el("span", { cls: "stat-date", text: "as of " + ind.date }));
+        }
+        tr.appendChild(td);
+      }
       tbody.appendChild(tr);
     }
     table.appendChild(tbody);
@@ -510,6 +565,7 @@ async function boot() {
   });
   document.getElementById("corr-recompute").addEventListener("click", () => loadCorrelation(true));
   document.getElementById("corr-period").addEventListener("change", () => loadCorrelation(true));
+  document.getElementById("stats-refresh").addEventListener("click", () => loadStatistics(true));
 
   await loadConfig();
   loadQuotes(false);
