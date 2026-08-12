@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fincept Live Price Board</title>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header>
+  <h1>Fincept &middot; Live Market Dashboard</h1>
+  <span id="status">loading&hellip;</span>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button class="tab-btn active" data-tab="watchlist">Watchlist</button>
+  <button class="tab-btn" data-tab="macro">Macro</button>
+  <button class="tab-btn" data-tab="correlation">Correlation</button>
+</nav>
+
+<main>
+  <!-- ── Watchlist tab ─────────────────────────────────────────────── -->
+  <section id="tab-watchlist" class="tab-panel active">
+    <div class="editbar">
+      <input id="symbols-input" placeholder="AAPL, MSFT, TSLA, RELIANCE.NS, BTC-USD ..." autocomplete="off">
+      <button id="update-btn">Update List</button>
+      <button id="refresh-btn" class="ghost">Refresh Now</button>
+    </div>
+    <table id="quote-table" class="data-table clickable">
+      <thead>
+        <tr>
+          <th>Symbol</th><th class="col-name">Exchange</th><th>Price</th><th>Change</th>
+          <th>Chg %</th><th>High</th><th>Low</th><th>Volume</th>
+        </tr>
+      </thead>
+      <tbody id="quote-body"></tbody>
+    </table>
+    <p class="hint">Auto-refreshes every <span id="wl-interval-s">5</span>s. Click a row for candles, trend and full detail.</p>
+  </section>
+
+  <!-- ── Macro tab ─────────────────────────────────────────────────── -->
+  <section id="tab-macro" class="tab-panel">
+    <p class="hint">Market-based macro proxies (indices, yields, FX, commodities) grouped by region &mdash; not official
+      statistical releases (CPI/GDP/NFP). Click any row for its chart.</p>
+    <div id="macro-groups"></div>
+  </section>
+
+  <!-- ── Correlation tab ──────────────────────────────────────────── -->
+  <section id="tab-correlation" class="tab-panel">
+    <div class="editbar">
+      <label for="corr-period" class="inline-label">Lookback</label>
+      <select id="corr-period">
+        <option value="1mo">1 month</option>
+        <option value="3mo">3 months</option>
+        <option value="6mo" selected>6 months</option>
+        <option value="1y">1 year</option>
+        <option value="2y">2 years</option>
+      </select>
+      <button id="corr-recompute">Recompute</button>
+      <span id="corr-status" class="hint inline"></span>
+    </div>
+    <p class="hint">Pearson correlation of daily returns: your watchlist vs. every macro signal above. Read as
+      "when this macro factor moves, this stock has historically moved &hellip;" &mdash; a statistical tendency,
+      not a prediction.</p>
+    <div id="corr-table-wrap" class="scroll-x"></div>
+    <div id="corr-drivers"></div>
+  </section>
+</main>
+
+<!-- ── Detail overlay (shared by Watchlist + Macro row clicks) ────────── -->
+<div id="detail-overlay" class="overlay hidden">
+  <div id="detail-panel">
+    <div class="detail-header">
+      <div>
+        <span id="detail-symbol" class="detail-symbol"></span>
+        <span id="detail-name" class="detail-name"></span>
+      </div>
+      <button id="detail-close" class="ghost">Close</button>
+    </div>
+    <div id="detail-quote-grid" class="stat-grid"></div>
+    <div class="chart-controls">
+      <div class="period-picker" id="detail-period-picker">
+        <button data-period="1mo">1M</button>
+        <button data-period="3mo">3M</button>
+        <button data-period="6mo" class="active">6M</button>
+        <button data-period="1y">1Y</button>
+        <button data-period="2y">2Y</button>
+      </div>
+      <span id="detail-trend" class="trend-badge"></span>
+    </div>
+    <canvas id="detail-chart" width="900" height="320"></canvas>
+    <div id="detail-info-grid" class="stat-grid"></div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
