@@ -1,0 +1,1070 @@
+<title>Fincept Market Dashboard</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--
+  Static design-review snapshot of tools/live_price_board (server.py + static/*).
+  Same markup/CSS as the real app, verbatim; the only addition is a small
+  fetch() shim (mockFetch below) so every /api/* call the real app.js makes
+  resolves to realistic sample data instead of hitting a live backend —
+  this file has no server behind it. Regenerate by hand if the real
+  static/index.html, styles.css, or app.js change structurally.
+-->
+<style>
+/* Fincept Live Price Board — tokens mirror fincept-qt's Obsidian theme
+   (ThemeManager.cpp) so this standalone dashboard looks like it belongs
+   to the same product. Single dark theme by design — matches the desktop
+   app's terminal aesthetic, which has no light mode either. */
+:root {
+  --bg-base: #080808; --bg-surface: #0a0a0a; --bg-raised: #111111; --bg-hover: #161616;
+  --border-dim: #1a1a1a; --border-bright: #333333;
+  --text-primary: #e5e5e5; --text-secondary: #808080; --text-tertiary: #525252;
+  --accent: #d97706; --accent-dim: #78350f;
+  --positive: #16a34a; --negative: #dc2626;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg-base); color: var(--text-primary);
+  font-family: Consolas, "Courier New", monospace; font-size: 14px;
+}
+
+header {
+  display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+  background: var(--bg-raised); border-bottom: 1px solid var(--border-dim);
+}
+header h1 {
+  font-size: 13px; font-weight: 700; letter-spacing: 0.5px; margin: 0;
+  color: var(--accent); text-transform: uppercase;
+}
+#status { font-size: 11px; color: var(--text-tertiary); margin-left: auto; }
+#status.stale { color: var(--negative); }
+
+nav.tabs {
+  display: flex; gap: 2px; padding: 0 16px; background: var(--bg-raised);
+  border-bottom: 1px solid var(--border-dim);
+}
+.tab-btn {
+  background: transparent; color: var(--text-secondary); border: none;
+  border-bottom: 2px solid transparent; padding: 10px 16px; font: inherit;
+  font-weight: 700; font-size: 12px; letter-spacing: 0.3px; text-transform: uppercase;
+  cursor: pointer;
+}
+.tab-btn:hover { color: var(--text-primary); }
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab-btn:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 1px;
+}
+
+main { padding: 16px; max-width: 1100px; margin: 0 auto; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+.editbar { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.editbar input, .editbar select {
+  background: var(--bg-base); color: var(--text-primary);
+  border: 1px solid var(--border-dim); padding: 6px 8px; font: inherit;
+}
+.editbar input { flex: 1; min-width: 200px; }
+.editbar input:focus, .editbar select:focus { outline: none; border-color: var(--border-bright); }
+.inline-label { color: var(--text-tertiary); font-size: 11px; text-transform: uppercase; }
+
+button {
+  background: rgba(217,119,6,0.1); color: var(--accent); border: 1px solid var(--accent-dim);
+  padding: 6px 14px; font: inherit; font-weight: 700; cursor: pointer;
+}
+button:hover { background: var(--accent); color: #fff; }
+button.ghost { background: var(--bg-raised); color: var(--text-secondary); border-color: var(--border-dim); }
+button.ghost:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+table.data-table { width: 100%; border-collapse: collapse; background: var(--bg-surface); margin-bottom: 6px; }
+.data-table th, .data-table td { padding: 8px 10px; text-align: right; border-bottom: 1px solid var(--border-dim); font-variant-numeric: tabular-nums; }
+.data-table th:first-child, .data-table td:first-child { text-align: left; }
+.data-table th {
+  color: var(--text-tertiary); font-size: 11px; font-weight: 700; text-transform: uppercase;
+}
+.data-table.clickable tbody tr { cursor: pointer; }
+.data-table.clickable tbody tr:hover { background: var(--bg-hover); }
+td.symbol { font-weight: 700; }
+td.col-name, th.col-name { color: var(--text-secondary); text-align: left; font-size: 12px; }
+td.pos { color: var(--positive); }
+td.neg { color: var(--negative); }
+td.err { color: var(--text-tertiary); font-style: italic; }
+
+.hint { color: var(--text-tertiary); font-size: 11px; margin: 8px 0; }
+.hint.inline { margin: 0; }
+
+/* ── Macro tab ── */
+.section-title {
+  font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--text-primary); border-bottom: 1px solid var(--border-dim); padding-bottom: 6px;
+  margin: 24px 0 12px;
+}
+.section-title:first-child { margin-top: 0; }
+.macro-group { margin-bottom: 20px; }
+.macro-group h2 {
+  font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--accent); margin: 0 0 6px;
+}
+.stats-group { margin-bottom: 18px; }
+.stats-group h3 {
+  font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--accent); margin: 0 0 6px;
+}
+td.stat-null { color: var(--text-tertiary); }
+.stat-date { font-size: 10px; color: var(--text-tertiary); display: block; font-weight: 400; margin-top: 2px; }
+
+/* ── Correlation tab ── */
+.scroll-x { overflow-x: auto; }
+table.heatmap { border-collapse: collapse; font-size: 12px; }
+table.heatmap th, table.heatmap td {
+  padding: 6px 8px; text-align: center; border: 1px solid var(--border-dim); white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+table.heatmap th { color: var(--text-secondary); font-weight: 700; }
+table.heatmap td.row-label { text-align: left; font-weight: 700; color: var(--text-primary); background: var(--bg-surface); }
+table.heatmap td.corr-cell { color: #fff; }
+table.heatmap td.corr-empty { color: var(--text-tertiary); background: var(--bg-surface); }
+
+#corr-drivers { margin-top: 18px; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.driver-card { background: var(--bg-surface); border: 1px solid var(--border-dim); padding: 10px 12px; }
+.driver-card h3 { margin: 0 0 8px; font-size: 12px; color: var(--accent); }
+.driver-card ul { list-style: none; margin: 0; padding: 0; font-size: 12px; }
+.driver-card li { display: flex; justify-content: space-between; padding: 3px 0; color: var(--text-secondary); gap: 8px; }
+.driver-card li span.r-val { font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* ── Detail overlay ── */
+.overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex;
+  align-items: flex-start; justify-content: center; padding: 40px 16px; overflow-y: auto; z-index: 50;
+}
+.overlay.hidden { display: none; }
+#detail-panel {
+  background: var(--bg-surface); border: 1px solid var(--border-bright); width: 100%; max-width: 960px;
+  padding: 18px 20px 24px;
+}
+.detail-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.detail-symbol { font-size: 18px; font-weight: 700; color: var(--accent); margin-right: 10px; }
+.detail-name { color: var(--text-secondary); font-size: 13px; }
+
+.stat-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin-bottom: 14px;
+}
+.stat-cell { background: var(--bg-base); border: 1px solid var(--border-dim); padding: 8px 10px; }
+.stat-cell .label { display: block; font-size: 10px; text-transform: uppercase; color: var(--text-tertiary); margin-bottom: 4px; }
+.stat-cell .value { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.stat-cell .value.pos { color: var(--positive); }
+.stat-cell .value.neg { color: var(--negative); }
+
+.chart-controls { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.period-picker { display: flex; gap: 4px; }
+.period-picker button {
+  padding: 4px 10px; font-size: 11px; background: var(--bg-raised); color: var(--text-secondary); border-color: var(--border-dim);
+}
+.period-picker button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.trend-badge { font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 3px 10px; border: 1px solid var(--border-dim); }
+.trend-badge.up { color: var(--positive); border-color: var(--positive); }
+.trend-badge.down { color: var(--negative); border-color: var(--negative); }
+.trend-badge.flat { color: var(--text-tertiary); }
+
+#detail-chart { width: 100%; height: 320px; background: var(--bg-base); border: 1px solid var(--border-dim); display: block; }
+
+footer.preview-note {
+  max-width: 1100px; margin: 0 auto; padding: 10px 16px 28px; color: var(--text-tertiary); font-size: 11px;
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<header>
+  <h1>Fincept &middot; Live Market Dashboard</h1>
+  <span id="status">loading&hellip;</span>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button class="tab-btn active" data-tab="watchlist">Watchlist</button>
+  <button class="tab-btn" data-tab="macro">Macro</button>
+  <button class="tab-btn" data-tab="correlation">Correlation</button>
+</nav>
+
+<main>
+  <!-- ── Watchlist tab ─────────────────────────────────────────────── -->
+  <section id="tab-watchlist" class="tab-panel active">
+    <div class="editbar">
+      <input id="symbols-input" placeholder="AAPL, MSFT, TSLA, RELIANCE.NS, BTC-USD ..." autocomplete="off">
+      <button id="update-btn">Update List</button>
+      <button id="refresh-btn" class="ghost">Refresh Now</button>
+    </div>
+    <table id="quote-table" class="data-table clickable">
+      <thead>
+        <tr>
+          <th>Symbol</th><th class="col-name">Exchange</th><th>Price</th><th>Change</th>
+          <th>Chg %</th><th>High</th><th>Low</th><th>Volume</th>
+        </tr>
+      </thead>
+      <tbody id="quote-body"></tbody>
+    </table>
+    <p class="hint">Auto-refreshes every <span id="wl-interval-s">5</span>s. Click a row for candles, trend and full detail.</p>
+  </section>
+
+  <!-- ── Macro tab ─────────────────────────────────────────────────── -->
+  <section id="tab-macro" class="tab-panel">
+    <h2 class="section-title">Market Signals</h2>
+    <p class="hint">Market-based macro proxies (indices, yields, FX, commodities) grouped by region. Click any row for its chart.</p>
+    <div id="macro-groups"></div>
+
+    <h2 class="section-title">Statistical Releases</h2>
+    <div class="editbar">
+      <span class="hint inline">Official government-reported figures via World Bank Open Data &mdash; GDP growth, inflation (CPI), unemployment.</span>
+      <button id="stats-refresh" class="ghost">Refresh</button>
+    </div>
+    <p id="stats-status" class="hint"></p>
+    <div id="stats-groups"></div>
+  </section>
+
+  <!-- ── Correlation tab ──────────────────────────────────────────── -->
+  <section id="tab-correlation" class="tab-panel">
+    <div class="editbar">
+      <label for="corr-period" class="inline-label">Lookback</label>
+      <select id="corr-period">
+        <option value="1mo">1 month</option>
+        <option value="3mo">3 months</option>
+        <option value="6mo" selected>6 months</option>
+        <option value="1y">1 year</option>
+        <option value="2y">2 years</option>
+      </select>
+      <button id="corr-recompute">Recompute</button>
+      <span id="corr-status" class="hint inline"></span>
+    </div>
+    <p class="hint">Pearson correlation of daily returns: your watchlist vs. every macro signal above. Read as
+      "when this macro factor moves, this stock has historically moved &hellip;" &mdash; a statistical tendency,
+      not a prediction.</p>
+    <div id="corr-table-wrap" class="scroll-x"></div>
+    <div id="corr-drivers"></div>
+  </section>
+</main>
+
+<footer class="preview-note">
+  Static design-review snapshot with sample data &mdash; not a live connection. See tools/live_price_board/ in the
+  FinceptTerminal repo for the real app (server.py + static/*).
+</footer>
+
+<!-- ── Detail overlay (shared by Watchlist + Macro row clicks) ────────── -->
+<div id="detail-overlay" class="overlay hidden">
+  <div id="detail-panel">
+    <div class="detail-header">
+      <div>
+        <span id="detail-symbol" class="detail-symbol"></span>
+        <span id="detail-name" class="detail-name"></span>
+      </div>
+      <button id="detail-close" class="ghost">Close</button>
+    </div>
+    <div id="detail-quote-grid" class="stat-grid"></div>
+    <div class="chart-controls">
+      <div class="period-picker" id="detail-period-picker">
+        <button data-period="1mo">1M</button>
+        <button data-period="3mo">3M</button>
+        <button data-period="6mo" class="active">6M</button>
+        <button data-period="1y">1Y</button>
+        <button data-period="2y">2Y</button>
+      </div>
+      <span id="detail-trend" class="trend-badge"></span>
+    </div>
+    <canvas id="detail-chart" width="900" height="320"></canvas>
+    <div id="detail-info-grid" class="stat-grid"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ════════════════════════════════════════════════════════════════════
+   MOCK BACKEND — replaces server.py for this static preview only.
+   Everything below this block through the end of the file is the real
+   app's static/app.js, byte-for-byte. Only window.fetch is intercepted.
+   ════════════════════════════════════════════════════════════════════ */
+(function () {
+  function strSeed(str) {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0;
+    return (Math.abs(h) % 2147483646) + 1;
+  }
+  function seededRand(seed) {
+    let s = seed;
+    return function () {
+      s = (s * 16807) % 2147483647;
+      return (s - 1) / 2147483646;
+    };
+  }
+
+  const SYMBOLS = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META", "JPM"];
+  const BASE_PRICE = { AAPL: 231.42, MSFT: 468.11, GOOGL: 193.77, AMZN: 226.85, NVDA: 178.36, TSLA: 342.09, META: 612.44, JPM: 289.13 };
+  const EXCHANGE = { AAPL: "NASDAQ", MSFT: "NASDAQ", GOOGL: "NASDAQ", AMZN: "NASDAQ", NVDA: "NASDAQ", TSLA: "NASDAQ", META: "NASDAQ", JPM: "NYSE" };
+  const COMPANY = {
+    AAPL: "Apple Inc.", MSFT: "Microsoft Corp.", GOOGL: "Alphabet Inc.", AMZN: "Amazon.com Inc.",
+    NVDA: "NVIDIA Corp.", TSLA: "Tesla Inc.", META: "Meta Platforms Inc.", JPM: "JPMorgan Chase & Co.",
+  };
+  const SECTOR = {
+    AAPL: ["Technology", "Consumer Electronics"], MSFT: ["Technology", "Software"], GOOGL: ["Communication Services", "Internet Content"],
+    AMZN: ["Consumer Cyclical", "Internet Retail"], NVDA: ["Technology", "Semiconductors"], TSLA: ["Consumer Cyclical", "Auto Manufacturers"],
+    META: ["Communication Services", "Internet Content"], JPM: ["Financial Services", "Banks"],
+  };
+
+  const MACRO_GROUPS = {
+    US: [["^GSPC", "S&P 500"], ["^DJI", "Dow Jones Industrial Average"], ["^IXIC", "Nasdaq Composite"],
+         ["^VIX", "CBOE Volatility Index"], ["^TNX", "US 10Y Treasury Yield"], ["DX-Y.NYB", "US Dollar Index"]],
+    EU: [["^STOXX50E", "Euro Stoxx 50"], ["^GDAXI", "Germany DAX"], ["^FCHI", "France CAC 40"],
+         ["^FTSE", "UK FTSE 100"], ["EURUSD=X", "EUR/USD"]],
+    Baltics: [["TAL1T.TL", "Tallink Grupp (Tallinn)"], ["LHV1T.TL", "LHV Group (Tallinn)"],
+              ["IGN1L.VS", "Ignitis Grupė (Vilnius)"], ["SAB1L.VS", "Šiaulių Bankas (Vilnius)"],
+              ["GRD1R.RG", "Grindeks (Riga)"], ["EURUSD=X", "EUR/USD"]],
+    Asia: [["^N225", "Japan Nikkei 225"], ["^HSI", "Hong Kong Hang Seng"], ["000001.SS", "Shanghai Composite"],
+           ["^NSEI", "India Nifty 50"], ["USDJPY=X", "USD/JPY"], ["USDCNY=X", "USD/CNY"]],
+    Global: [["GC=F", "Gold"], ["CL=F", "Crude Oil WTI"], ["BTC-USD", "Bitcoin"]],
+  };
+  const MACRO_BASE = {
+    "^GSPC": 6450, "^DJI": 44200, "^IXIC": 21800, "^VIX": 15.2, "^TNX": 4.28, "DX-Y.NYB": 103.4,
+    "^STOXX50E": 5120, "^GDAXI": 19400, "^FCHI": 7850, "^FTSE": 8320, "EURUSD=X": 1.087,
+    "TAL1T.TL": 4.82, "LHV1T.TL": 20.4, "IGN1L.VS": 26.1, "SAB1L.VS": 1.62, "GRD1R.RG": 12.9,
+    "^N225": 38900, "^HSI": 18200, "000001.SS": 3180, "^NSEI": 24600, "USDJPY=X": 151.2, "USDCNY=X": 7.18,
+    "GC=F": 2680, "CL=F": 71.4, "BTC-USD": 97500,
+  };
+
+  const STAT_GROUPS = {
+    US: [["USA", "United States", 2.5, 3.1, 4.0]],
+    EU: [["DEU", "Germany", 0.3, 2.4, 5.7], ["FRA", "France", 1.1, 2.0, 7.3], ["ITA", "Italy", 0.7, 1.9, 7.8], ["ESP", "Spain", 2.9, 2.8, 11.5]],
+    Baltics: [["EST", "Estonia", -0.5, 4.2, 6.8], ["LVA", "Latvia", -0.2, 3.8, 6.5], ["LTU", "Lithuania", 1.8, 2.9, 7.0]],
+    Asia: [["CHN", "China", 5.0, 0.4, 5.1], ["JPN", "Japan", 0.9, 2.7, 2.5], ["IND", "India", 6.8, 4.9, 7.1]],
+    Global: [["WLD", "World", 2.6, 3.5, 5.0]],
+  };
+  const STAT_INDICATOR_LABELS = [
+    { code: "NY.GDP.MKTP.KD.ZG", label: "GDP Growth", unit: "%" },
+    { code: "FP.CPI.TOTL.ZG", label: "Inflation (CPI)", unit: "%" },
+    { code: "SL.UEM.TOTL.ZS", label: "Unemployment", unit: "%" },
+  ];
+
+  function macroFlat() {
+    const seen = new Set(), out = [];
+    for (const entries of Object.values(MACRO_GROUPS)) for (const [sym] of entries) if (!seen.has(sym)) { seen.add(sym); out.push(sym); }
+    return out;
+  }
+
+  function mockQuote(sym) {
+    const rand = seededRand(strSeed(sym + "|quote"));
+    const base = BASE_PRICE[sym] || MACRO_BASE[sym] || 100;
+    const changePct = (rand() - 0.45) * 4;
+    const change = base * changePct / 100;
+    const price = base + change;
+    return {
+      symbol: sym, price: round2(price), change: round2(change), change_percent: round2(changePct),
+      volume: Math.round(2e6 + rand() * 9e7), high: round2(price + Math.abs(change) * 0.6),
+      low: round2(price - Math.abs(change) * 0.6), open: round2(base), previous_close: round2(base),
+      timestamp: Math.floor(Date.now() / 1000), exchange: EXCHANGE[sym] || "",
+    };
+  }
+  function round2(n) { return Math.round(n * 100) / 100; }
+
+  function mockCandles(sym, period) {
+    const days = { "1mo": 22, "3mo": 65, "6mo": 130, "1y": 260, "2y": 520 }[period] || 130;
+    const rand = seededRand(strSeed(sym + "|" + period));
+    const base = BASE_PRICE[sym] || MACRO_BASE[sym] || 100;
+    let price = base * (0.85 + rand() * 0.3);
+    const out = [];
+    const now = Math.floor(Date.now() / 1000);
+    for (let i = days - 1; i >= 0; i--) {
+      const drift = (rand() - 0.5) * base * 0.025;
+      const o = price;
+      const c = Math.max(base * 0.4, price + drift);
+      const h = Math.max(o, c) + rand() * base * 0.01;
+      const l = Math.min(o, c) - rand() * base * 0.01;
+      out.push({ timestamp: now - i * 86400, open: round2(o), high: round2(h), low: round2(l), close: round2(c), volume: Math.round(1e6 + rand() * 5e6) });
+      price = c;
+    }
+    return out;
+  }
+  function sma(values, window) {
+    const out = []; let total = 0;
+    for (let i = 0; i < values.length; i++) {
+      total += values[i];
+      if (i >= window) total -= values[i - window];
+      out.push(i >= window - 1 ? round2(total / window) : null);
+    }
+    return out;
+  }
+
+  function mockDetail(sym) {
+    const quote = mockQuote(sym);
+    if (!COMPANY[sym]) return { symbol: sym, quote, info: null };
+    const rand = seededRand(strSeed(sym + "|info"));
+    const [sector, industry] = SECTOR[sym];
+    return {
+      symbol: sym, quote,
+      info: {
+        symbol: sym, company_name: COMPANY[sym], sector, industry,
+        market_cap: Math.round((0.4 + rand() * 3.2) * 1e12), pe_ratio: round2(18 + rand() * 25),
+        forward_pe: round2(16 + rand() * 22), dividend_yield: round2(rand() * 0.02, 4),
+        beta: round2(0.8 + rand() * 0.9), fifty_two_week_high: round2(BASE_PRICE[sym] * 1.18),
+        fifty_two_week_low: round2(BASE_PRICE[sym] * 0.74), average_volume: Math.round(2e7 + rand() * 6e7),
+        country: "United States", currency: "USD",
+      },
+    };
+  }
+
+  function mockCorrelation(period) {
+    const macros = macroFlat();
+    const macroName = {};
+    for (const entries of Object.values(MACRO_GROUPS)) for (const [sym, name] of entries) macroName[sym] = name;
+    const matrix = [], topDrivers = {};
+    for (const sym of SYMBOLS) {
+      const rand = seededRand(strSeed(sym + "|corr|" + period));
+      const correlations = {}; const drivers = [];
+      for (const m of macros) {
+        const r = round2(rand() * 1.7 - 0.55, 100);
+        const clamped = Math.max(-0.95, Math.min(0.95, r));
+        correlations[m] = clamped;
+        drivers.push({ symbol: m, name: macroName[m] || m, r: clamped });
+      }
+      drivers.sort((a, b) => Math.abs(b.r) - Math.abs(a.r));
+      matrix.push({ symbol: sym, correlations });
+      topDrivers[sym] = drivers.slice(0, 3);
+    }
+    return { period, stocks: SYMBOLS.slice(), macros, matrix, top_drivers: topDrivers };
+  }
+  function round2b(n, digits) { const m = Math.pow(10, digits || 2); return Math.round(n * m) / m; }
+
+  function jsonResponse(obj) {
+    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(obj) });
+  }
+
+  window.fetch = function (url) {
+    const [path, qs] = String(url).split("?");
+    const params = new URLSearchParams(qs || "");
+
+    if (path === "/api/config") {
+      return jsonResponse({
+        refresh_interval_ms: 5000, macro_interval_ms: 15000,
+        macro_groups: Object.fromEntries(Object.entries(MACRO_GROUPS).map(([r, e]) => [r, e.map(([symbol, name]) => ({ symbol, name }))])),
+      });
+    }
+    if (path === "/api/quotes") {
+      return jsonResponse({ symbols: SYMBOLS, quotes: SYMBOLS.map(mockQuote), fetched_at: new Date().toISOString(), refresh_interval_ms: 5000 });
+    }
+    if (path === "/api/watchlist") {
+      return jsonResponse({ symbols: SYMBOLS, quotes: SYMBOLS.map(mockQuote), fetched_at: new Date().toISOString() });
+    }
+    if (path === "/api/macro") {
+      const groups = {};
+      for (const [region, entries] of Object.entries(MACRO_GROUPS)) groups[region] = entries.map(([symbol, name]) => ({ ...mockQuote(symbol), name }));
+      return jsonResponse({ groups, fetched_at: new Date().toISOString(), refresh_interval_ms: 15000 });
+    }
+    if (path === "/api/statistics") {
+      const groups = {};
+      for (const [region, rows] of Object.entries(STAT_GROUPS)) {
+        groups[region] = rows.map(([code, name, gdp, cpi, uem]) => ({
+          country_code: code, country_name: name,
+          indicators: [
+            { code: "NY.GDP.MKTP.KD.ZG", label: "GDP Growth", unit: "%", value: gdp, date: "2024" },
+            { code: "FP.CPI.TOTL.ZG", label: "Inflation (CPI)", unit: "%", value: cpi, date: "2024" },
+            { code: "SL.UEM.TOTL.ZS", label: "Unemployment", unit: "%", value: uem, date: "2024" },
+          ],
+        }));
+      }
+      return jsonResponse({ groups, indicator_labels: STAT_INDICATOR_LABELS, source: "World Bank Open Data (api.worldbank.org)", fetched_at: new Date().toISOString(), error: null });
+    }
+    if (path === "/api/correlation") {
+      return jsonResponse({ ...mockCorrelation(params.get("period") || "6mo"), fetched_at: new Date().toISOString() });
+    }
+    if (path === "/api/detail") {
+      return jsonResponse(mockDetail((params.get("symbol") || "").toUpperCase()));
+    }
+    if (path === "/api/history") {
+      const sym = (params.get("symbol") || "").toUpperCase();
+      const period = params.get("period") || "6mo";
+      const candles = mockCandles(sym, period);
+      const closes = candles.map((c) => c.close);
+      const trendSma = sma(closes, 20);
+      const last = trendSma[trendSma.length - 1];
+      const trend = last === null ? "flat" : closes[closes.length - 1] > last * 1.005 ? "up" : closes[closes.length - 1] < last * 0.995 ? "down" : "flat";
+      return jsonResponse({ symbol: sym, period, interval: "1d", candles, sma20: trendSma, trend });
+    }
+    return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ error: "not found (mock)" }) });
+  };
+})();
+</script>
+<script>
+"use strict";
+
+// ── Shared state ────────────────────────────────────────────────────────
+let refreshMs = 5000;
+let macroMs = 15000;
+let activeTab = "watchlist";
+let macroLoadedOnce = false;
+let corrLoadedOnce = false;
+let statsLoadedOnce = false;
+let macroNameBySymbol = {};
+let currentDetailSymbol = null;
+let currentDetailPeriod = "6mo";
+
+// ── Formatting helpers ──────────────────────────────────────────────────
+function fmt(n, digits) {
+  if (n === null || n === undefined || Number.isNaN(n)) return "--";
+  return Number(n).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
+}
+function fmtCompact(n) {
+  if (n === null || n === undefined || Number.isNaN(n)) return "--";
+  const abs = Math.abs(n);
+  if (abs >= 1e12) return (n / 1e12).toFixed(2) + "T";
+  if (abs >= 1e9) return (n / 1e9).toFixed(2) + "B";
+  if (abs >= 1e6) return (n / 1e6).toFixed(2) + "M";
+  if (abs >= 1e3) return (n / 1e3).toFixed(2) + "K";
+  return String(n);
+}
+function pctClass(v) {
+  return (v ?? 0) >= 0 ? "pos" : "neg";
+}
+function el(tag, opts) {
+  const node = document.createElement(tag);
+  if (opts) {
+    if (opts.cls) node.className = opts.cls;
+    if (opts.text !== undefined) node.textContent = opts.text;
+    if (opts.title) node.title = opts.title;
+    if (opts.attrs) for (const [k, v] of Object.entries(opts.attrs)) node.setAttribute(k, v);
+  }
+  return node;
+}
+
+// ── Tabs ─────────────────────────────────────────────────────────────────
+function setupTabs() {
+  document.querySelectorAll(".tab-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const tab = btn.dataset.tab;
+      if (tab === activeTab) return;
+      document.querySelectorAll(".tab-btn").forEach((b) => b.classList.toggle("active", b === btn));
+      document.querySelectorAll(".tab-panel").forEach((p) => p.classList.toggle("active", p.id === "tab-" + tab));
+      activeTab = tab;
+      if (tab === "macro" && !macroLoadedOnce) loadMacro(false);
+      if (tab === "macro" && !statsLoadedOnce) loadStatistics(false);
+      if (tab === "correlation" && !corrLoadedOnce) loadCorrelation(false);
+    });
+  });
+}
+
+// ── Watchlist tab ────────────────────────────────────────────────────────
+const statusEl = () => document.getElementById("status");
+const bodyEl = () => document.getElementById("quote-body");
+const inputEl = () => document.getElementById("symbols-input");
+
+function quoteRow(q, extraCols) {
+  const tr = el("tr");
+  tr.dataset.symbol = q.symbol || "";
+  if (q.error) {
+    tr.appendChild(el("td", { cls: "symbol", text: q.symbol || "" }));
+    const errTd = el("td", { cls: "err", text: "no data" });
+    errTd.colSpan = extraCols;
+    tr.appendChild(errTd);
+    return tr;
+  }
+  return tr;
+}
+
+function renderWatchlist(data) {
+  const body = bodyEl();
+  body.textContent = "";
+  for (const q of data.quotes) {
+    if (q.error) {
+      body.appendChild(quoteRow(q, 7));
+      continue;
+    }
+    const tr = el("tr");
+    tr.dataset.symbol = q.symbol || "";
+    const changeCls = pctClass(q.change);
+    tr.appendChild(el("td", { cls: "symbol", text: q.symbol ?? "" }));
+    tr.appendChild(el("td", { cls: "col-name", text: q.exchange ?? "" }));
+    tr.appendChild(el("td", { text: fmt(q.price, 2) }));
+    tr.appendChild(el("td", { cls: changeCls, text: (q.change >= 0 ? "+" : "") + fmt(q.change, 2) }));
+    tr.appendChild(el("td", { cls: changeCls, text: (q.change_percent >= 0 ? "+" : "") + fmt(q.change_percent, 2) + "%" }));
+    tr.appendChild(el("td", { text: fmt(q.high, 2) }));
+    tr.appendChild(el("td", { text: fmt(q.low, 2) }));
+    tr.appendChild(el("td", { text: fmtCompact(q.volume) }));
+    body.appendChild(tr);
+  }
+  const fetchedAt = new Date(data.fetched_at);
+  statusEl().classList.remove("stale");
+  statusEl().textContent = "updated " + fetchedAt.toLocaleTimeString();
+  if (document.activeElement !== inputEl()) {
+    inputEl().value = data.symbols.join(", ");
+  }
+}
+
+async function loadQuotes(force) {
+  try {
+    const res = await fetch("/api/quotes" + (force ? "?force=1" : ""));
+    if (!res.ok) throw new Error("http " + res.status);
+    renderWatchlist(await res.json());
+  } catch (e) {
+    statusEl().classList.add("stale");
+    statusEl().textContent = "refresh failed: " + e.message;
+  }
+}
+
+async function updateWatchlist() {
+  const symbols = inputEl().value.split(",").map((s) => s.trim()).filter(Boolean);
+  if (!symbols.length) return;
+  try {
+    const res = await fetch("/api/watchlist", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ symbols }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "http " + res.status);
+    renderWatchlist(data);
+    corrLoadedOnce = false; // watchlist changed — correlation matrix is now stale
+  } catch (e) {
+    statusEl().classList.add("stale");
+    statusEl().textContent = "update failed: " + e.message;
+  }
+}
+
+// ── Macro tab ────────────────────────────────────────────────────────────
+async function loadMacro(force) {
+  try {
+    const res = await fetch("/api/macro" + (force ? "?force=1" : ""));
+    if (!res.ok) throw new Error("http " + res.status);
+    const data = await res.json();
+    renderMacro(data);
+    macroLoadedOnce = true;
+  } catch (e) {
+    console.error("macro refresh failed", e);
+  }
+}
+
+function renderMacro(data) {
+  const container = document.getElementById("macro-groups");
+  container.textContent = "";
+  for (const [region, rows] of Object.entries(data.groups)) {
+    const wrap = el("div", { cls: "macro-group" });
+    wrap.appendChild(el("h2", { text: region }));
+    const table = el("table", { cls: "data-table clickable" });
+    const thead = el("thead");
+    const headRow = el("tr");
+    ["Signal", "Name", "Price", "Change", "Chg %"].forEach((h, i) =>
+      headRow.appendChild(el("th", { cls: i === 1 ? "col-name" : "", text: h }))
+    );
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+    const tbody = el("tbody");
+    for (const q of rows) {
+      const tr = el("tr");
+      tr.dataset.symbol = q.symbol || "";
+      if (q.error) {
+        tr.appendChild(el("td", { cls: "symbol", text: q.symbol || "" }));
+        const errTd = el("td", { cls: "err", text: "no data" });
+        errTd.colSpan = 4;
+        tr.appendChild(errTd);
+        tbody.appendChild(tr);
+        continue;
+      }
+      const changeCls = pctClass(q.change);
+      tr.appendChild(el("td", { cls: "symbol", text: q.symbol ?? "" }));
+      tr.appendChild(el("td", { cls: "col-name", text: q.name ?? "" }));
+      tr.appendChild(el("td", { text: fmt(q.price, 2) }));
+      tr.appendChild(el("td", { cls: changeCls, text: (q.change >= 0 ? "+" : "") + fmt(q.change, 2) }));
+      tr.appendChild(el("td", { cls: changeCls, text: (q.change_percent >= 0 ? "+" : "") + fmt(q.change_percent, 2) + "%" }));
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    container.appendChild(wrap);
+  }
+}
+
+// ── Statistical releases (World Bank) ────────────────────────────────────
+async function loadStatistics(force) {
+  const statusEl2 = document.getElementById("stats-status");
+  statusEl2.textContent = "loading…";
+  try {
+    const res = await fetch("/api/statistics" + (force ? "?force=1" : ""));
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "http " + res.status);
+    renderStatistics(data);
+    statsLoadedOnce = true;
+    const asOf = new Date(data.fetched_at).toLocaleTimeString();
+    statusEl2.textContent = data.error ? `${data.source} — fetched ${asOf} (partial: ${data.error})` : `${data.source} — fetched ${asOf}`;
+  } catch (e) {
+    statusEl2.textContent = "failed: " + e.message;
+  }
+}
+
+function renderStatistics(data) {
+  const container = document.getElementById("stats-groups");
+  container.textContent = "";
+  for (const [region, rows] of Object.entries(data.groups)) {
+    const wrap = el("div", { cls: "stats-group" });
+    wrap.appendChild(el("h3", { text: region }));
+    const table = el("table", { cls: "data-table" });
+    const thead = el("thead");
+    const headRow = el("tr");
+    headRow.appendChild(el("th", { text: "Country" }));
+    for (const ind of data.indicator_labels) headRow.appendChild(el("th", { text: ind.label }));
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+    const tbody = el("tbody");
+    for (const row of rows) {
+      const tr = el("tr");
+      tr.appendChild(el("td", { cls: "symbol", text: row.country_name }));
+      for (const ind of row.indicators) {
+        const td = el("td");
+        if (ind.value === null || ind.value === undefined) {
+          td.className = "stat-null";
+          td.textContent = "—";
+        } else {
+          td.appendChild(el("span", { text: fmt(ind.value, 1) + (ind.unit || "") }));
+          if (ind.date) td.appendChild(el("span", { cls: "stat-date", text: "as of " + ind.date }));
+        }
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    container.appendChild(wrap);
+  }
+}
+
+// ── Correlation tab ──────────────────────────────────────────────────────
+function corrColor(v) {
+  if (v === null || v === undefined) return null;
+  const t = Math.min(1, Math.abs(v));
+  const rgb = v >= 0 ? "22,163,74" : "220,38,38";
+  return `rgba(${rgb},${(0.12 + 0.68 * t).toFixed(2)})`;
+}
+function corrStrength(v) {
+  const a = Math.abs(v);
+  if (a >= 0.7) return "strong";
+  if (a >= 0.4) return "moderate";
+  if (a >= 0.2) return "weak";
+  return "negligible";
+}
+
+async function loadCorrelation(force) {
+  const statusSpan = document.getElementById("corr-status");
+  statusSpan.textContent = "loading…";
+  const period = document.getElementById("corr-period").value;
+  try {
+    const res = await fetch(`/api/correlation?period=${encodeURIComponent(period)}${force ? "&force=1" : ""}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "http " + res.status);
+    renderCorrelation(data);
+    corrLoadedOnce = true;
+    statusSpan.textContent = "as of " + new Date(data.fetched_at).toLocaleTimeString();
+  } catch (e) {
+    statusSpan.textContent = "failed: " + e.message;
+  }
+}
+
+function renderCorrelation(data) {
+  const wrap = document.getElementById("corr-table-wrap");
+  wrap.textContent = "";
+  if (!data.stocks.length) {
+    wrap.appendChild(el("p", { cls: "hint", text: "Watchlist is empty — nothing to correlate." }));
+    return;
+  }
+  const table = el("table", { cls: "heatmap" });
+  const thead = el("thead");
+  const headRow = el("tr");
+  headRow.appendChild(el("th", { text: "" }));
+  for (const m of data.macros) headRow.appendChild(el("th", { text: m, title: macroNameBySymbol[m] || m }));
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = el("tbody");
+  for (const row of data.matrix) {
+    const tr = el("tr");
+    tr.appendChild(el("td", { cls: "row-label", text: row.symbol }));
+    for (const m of data.macros) {
+      const v = row.correlations[m];
+      const td = el("td", { cls: v === null ? "corr-empty" : "corr-cell", text: v === null ? "—" : v.toFixed(2) });
+      if (v !== null) {
+        td.style.background = corrColor(v);
+        td.title = `${row.symbol} vs ${macroNameBySymbol[m] || m}: r=${v.toFixed(2)} (${corrStrength(v)} ${v >= 0 ? "positive" : "negative"})`;
+      }
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+
+  const driversEl = document.getElementById("corr-drivers");
+  driversEl.textContent = "";
+  for (const stock of data.stocks) {
+    const drivers = (data.top_drivers && data.top_drivers[stock]) || [];
+    const card = el("div", { cls: "driver-card" });
+    card.appendChild(el("h3", { text: stock }));
+    const ul = el("ul");
+    if (!drivers.length) {
+      ul.appendChild(el("li", { text: "no data" }));
+    } else {
+      for (const d of drivers) {
+        const li = el("li");
+        li.appendChild(el("span", { text: `${d.name} (${d.symbol})` }));
+        li.appendChild(el("span", { cls: "r-val " + pctClass(d.r), text: (d.r >= 0 ? "+" : "") + d.r.toFixed(2) }));
+        ul.appendChild(li);
+      }
+    }
+    card.appendChild(ul);
+    driversEl.appendChild(card);
+  }
+}
+
+// ── Candlestick + trend chart ────────────────────────────────────────────
+function drawChart(canvas, candles, sma) {
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = "#080808";
+  ctx.fillRect(0, 0, w, h);
+  if (!candles || !candles.length) {
+    ctx.fillStyle = "#525252";
+    ctx.font = "13px Consolas, monospace";
+    ctx.fillText("No historical data available", 16, h / 2);
+    return;
+  }
+
+  const pad = { left: 54, right: 12, top: 12, bottom: 22 };
+  const plotW = w - pad.left - pad.right;
+  const plotH = h - pad.top - pad.bottom;
+  const highs = candles.map((c) => c.high).filter((v) => v !== null && v !== undefined);
+  const lows = candles.map((c) => c.low).filter((v) => v !== null && v !== undefined);
+  const smaVals = (sma || []).filter((v) => v !== null && v !== undefined);
+  let maxV = Math.max(...highs, ...(smaVals.length ? smaVals : [-Infinity]));
+  let minV = Math.min(...lows, ...(smaVals.length ? smaVals : [Infinity]));
+  if (!isFinite(maxV) || !isFinite(minV)) return;
+  const range = maxV - minV || Math.max(1, maxV * 0.02);
+  maxV += range * 0.06;
+  minV -= range * 0.06;
+
+  const n = candles.length;
+  const slot = plotW / n;
+  const candleW = Math.max(1, Math.min(9, slot * 0.62));
+  const yFor = (v) => pad.top + plotH - ((v - minV) / (maxV - minV)) * plotH;
+  const xFor = (i) => pad.left + slot * i + slot / 2;
+
+  // gridlines + y-axis labels
+  ctx.strokeStyle = "#1a1a1a";
+  ctx.fillStyle = "#525252";
+  ctx.font = "10px Consolas, monospace";
+  const ticks = 5;
+  for (let t = 0; t <= ticks; t++) {
+    const v = minV + ((maxV - minV) * t) / ticks;
+    const y = yFor(v);
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(w - pad.right, y);
+    ctx.stroke();
+    ctx.fillText(v.toFixed(2), 2, y + 3);
+  }
+
+  // candles
+  for (let i = 0; i < n; i++) {
+    const c = candles[i];
+    if (c.open === null || c.close === null || c.high === null || c.low === null) continue;
+    const x = xFor(i);
+    const up = c.close >= c.open;
+    ctx.strokeStyle = ctx.fillStyle = up ? "#16a34a" : "#dc2626";
+    ctx.beginPath();
+    ctx.moveTo(x, yFor(c.high));
+    ctx.lineTo(x, yFor(c.low));
+    ctx.stroke();
+    const yOpen = yFor(c.open), yClose = yFor(c.close);
+    const top = Math.min(yOpen, yClose);
+    const bodyH = Math.max(1, Math.abs(yClose - yOpen));
+    ctx.fillRect(x - candleW / 2, top, candleW, bodyH);
+  }
+
+  // SMA trend line
+  ctx.strokeStyle = "#d97706";
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  let started = false;
+  for (let i = 0; i < n; i++) {
+    const v = sma ? sma[i] : null;
+    if (v === null || v === undefined) continue;
+    const x = xFor(i), y = yFor(v);
+    if (!started) {
+      ctx.moveTo(x, y);
+      started = true;
+    } else {
+      ctx.lineTo(x, y);
+    }
+  }
+  ctx.stroke();
+  ctx.lineWidth = 1;
+
+  // x-axis date labels
+  ctx.fillStyle = "#525252";
+  ctx.textAlign = "left";
+  ctx.fillText(new Date(candles[0].timestamp * 1000).toLocaleDateString(), pad.left, h - 4);
+  ctx.textAlign = "right";
+  ctx.fillText(new Date(candles[n - 1].timestamp * 1000).toLocaleDateString(), w - pad.right, h - 4);
+  ctx.textAlign = "left";
+}
+
+// ── Detail overlay ────────────────────────────────────────────────────────
+function statCell(label, value, cls) {
+  const cell = el("div", { cls: "stat-cell" });
+  cell.appendChild(el("span", { cls: "label", text: label }));
+  cell.appendChild(el("span", { cls: "value" + (cls ? " " + cls : ""), text: value }));
+  return cell;
+}
+
+function renderDetailQuote(quote) {
+  const grid = document.getElementById("detail-quote-grid");
+  grid.textContent = "";
+  if (!quote || quote.error) {
+    grid.appendChild(el("p", { cls: "hint", text: "No live quote available for this symbol." }));
+    return;
+  }
+  const changeCls = pctClass(quote.change);
+  grid.appendChild(statCell("Price", fmt(quote.price, 2)));
+  grid.appendChild(statCell("Change", (quote.change >= 0 ? "+" : "") + fmt(quote.change, 2), changeCls));
+  grid.appendChild(statCell("Chg %", (quote.change_percent >= 0 ? "+" : "") + fmt(quote.change_percent, 2) + "%", changeCls));
+  grid.appendChild(statCell("Open", fmt(quote.open, 2)));
+  grid.appendChild(statCell("High", fmt(quote.high, 2)));
+  grid.appendChild(statCell("Low", fmt(quote.low, 2)));
+  grid.appendChild(statCell("Prev Close", fmt(quote.previous_close, 2)));
+  grid.appendChild(statCell("Volume", fmtCompact(quote.volume)));
+  if (quote.exchange) grid.appendChild(statCell("Exchange", quote.exchange));
+}
+
+function renderDetailInfo(info) {
+  const grid = document.getElementById("detail-info-grid");
+  grid.textContent = "";
+  if (!info) return; // macro symbols / ETFs often have no fundamentals — just omit the section
+  const rows = [
+    ["Sector", info.sector], ["Industry", info.industry],
+    ["Market Cap", info.market_cap ? fmtCompact(info.market_cap) : null],
+    ["P/E", info.pe_ratio ? fmt(info.pe_ratio, 2) : null],
+    ["Forward P/E", info.forward_pe ? fmt(info.forward_pe, 2) : null],
+    ["Dividend Yield", info.dividend_yield ? fmt(info.dividend_yield * 100, 2) + "%" : null],
+    ["Beta", info.beta ? fmt(info.beta, 2) : null],
+    ["52W High", info.fifty_two_week_high ? fmt(info.fifty_two_week_high, 2) : null],
+    ["52W Low", info.fifty_two_week_low ? fmt(info.fifty_two_week_low, 2) : null],
+    ["Avg Volume", info.average_volume ? fmtCompact(info.average_volume) : null],
+    ["Country", info.country], ["Currency", info.currency],
+  ];
+  for (const [label, value] of rows) {
+    if (value === null || value === undefined || value === "N/A" || value === "") continue;
+    grid.appendChild(statCell(label, String(value)));
+  }
+}
+
+async function loadDetailInfo(symbol) {
+  try {
+    const res = await fetch(`/api/detail?symbol=${encodeURIComponent(symbol)}`);
+    const data = await res.json();
+    document.getElementById("detail-name").textContent = data.info && data.info.company_name ? data.info.company_name : "";
+    renderDetailQuote(data.quote);
+    renderDetailInfo(data.info);
+  } catch (e) {
+    console.error("detail fetch failed", e);
+  }
+}
+
+async function loadDetailChart(symbol, period) {
+  currentDetailPeriod = period;
+  document.querySelectorAll("#detail-period-picker button").forEach((b) => b.classList.toggle("active", b.dataset.period === period));
+  try {
+    const res = await fetch(`/api/history?symbol=${encodeURIComponent(symbol)}&period=${encodeURIComponent(period)}&interval=1d`);
+    const data = await res.json();
+    drawChart(document.getElementById("detail-chart"), data.candles, data.sma20);
+    const badge = document.getElementById("detail-trend");
+    badge.className = "trend-badge " + (data.trend || "flat");
+    badge.textContent = data.error ? "no data" : (data.trend || "flat") + " trend";
+  } catch (e) {
+    console.error("history fetch failed", e);
+  }
+}
+
+function openDetail(symbol) {
+  if (!symbol) return;
+  currentDetailSymbol = symbol;
+  document.getElementById("detail-symbol").textContent = symbol;
+  document.getElementById("detail-name").textContent = "";
+  document.getElementById("detail-quote-grid").textContent = "";
+  document.getElementById("detail-info-grid").textContent = "";
+  document.getElementById("detail-overlay").classList.remove("hidden");
+  loadDetailInfo(symbol);
+  loadDetailChart(symbol, "6mo");
+}
+
+function closeDetail() {
+  document.getElementById("detail-overlay").classList.add("hidden");
+  currentDetailSymbol = null;
+}
+
+function setupDetailOverlay() {
+  document.getElementById("detail-close").addEventListener("click", closeDetail);
+  document.getElementById("detail-overlay").addEventListener("click", (e) => {
+    if (e.target.id === "detail-overlay") closeDetail();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeDetail();
+  });
+  document.querySelectorAll("#detail-period-picker button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (currentDetailSymbol) loadDetailChart(currentDetailSymbol, btn.dataset.period);
+    });
+  });
+}
+
+function setupRowClicks() {
+  // Event delegation: both the watchlist table and every macro-group table
+  // (rebuilt on each refresh) route row clicks through here.
+  document.addEventListener("click", (e) => {
+    const tr = e.target.closest("tr[data-symbol]");
+    if (!tr || !tr.dataset.symbol) return;
+    // Ignore clicks that originated inside the edit bar's own controls.
+    if (e.target.closest("input, select, button")) return;
+    openDetail(tr.dataset.symbol);
+  });
+}
+
+// ── Boot ─────────────────────────────────────────────────────────────────
+async function loadConfig() {
+  try {
+    const res = await fetch("/api/config");
+    const data = await res.json();
+    refreshMs = data.refresh_interval_ms || refreshMs;
+    macroMs = data.macro_interval_ms || macroMs;
+    document.getElementById("wl-interval-s").textContent = String(Math.round(refreshMs / 1000));
+    macroNameBySymbol = {};
+    for (const entries of Object.values(data.macro_groups || {})) {
+      for (const { symbol, name } of entries) macroNameBySymbol[symbol] = name;
+    }
+  } catch (e) {
+    console.error("config fetch failed", e);
+  }
+}
+
+async function boot() {
+  setupTabs();
+  setupDetailOverlay();
+  setupRowClicks();
+  document.getElementById("update-btn").addEventListener("click", updateWatchlist);
+  document.getElementById("refresh-btn").addEventListener("click", () => loadQuotes(true));
+  inputEl().addEventListener("keydown", (e) => {
+    if (e.key === "Enter") updateWatchlist();
+  });
+  document.getElementById("corr-recompute").addEventListener("click", () => loadCorrelation(true));
+  document.getElementById("corr-period").addEventListener("change", () => loadCorrelation(true));
+  document.getElementById("stats-refresh").addEventListener("click", () => loadStatistics(true));
+
+  await loadConfig();
+  loadQuotes(false);
+  setInterval(() => loadQuotes(false), refreshMs);
+  setInterval(() => {
+    if (activeTab === "macro") loadMacro(false);
+  }, macroMs);
+}
+
+boot();
+</script>
