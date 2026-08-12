@@ -305,9 +305,11 @@ void MarketDataService::ensure_registered_with_hub() {
     auto& hub = datahub::DataHub::instance();
     hub.register_producer(this);
 
-    // Quotes: 30s TTL, 2s min interval. Dropped min_interval from 5s → 2s so
-    // user-triggered refreshes and initial cold-start paint don't queue behind
-    // the gate. 2s still prevents hammering yfinance on scheduler ticks.
+    // Quotes: 5s TTL, 2s min interval. Dropped TTL from 30s → 5s so
+    // subscribed widgets auto-refresh close to real time instead of sitting
+    // on a stale price for up to half a minute; min_interval stays below TTL
+    // so the scheduler tick isn't blocked by its own gate, while still
+    // preventing back-to-back force-refreshes from hammering yfinance.
     //
     // Phase 8 / decision 9.2: pause_when_inactive=true. Quotes drive
     // visible price tickers; when a frame is minimised the user can't see
@@ -315,7 +317,7 @@ void MarketDataService::ensure_registered_with_hub() {
     // pure waste. The cached value still updates so the next show reads
     // a fresh price from peek().
     datahub::TopicPolicy quote_p;
-    quote_p.ttl_ms = 30'000;
+    quote_p.ttl_ms = 5'000;
     quote_p.min_interval_ms = 2'000;
     quote_p.pause_when_inactive = true;
     hub.set_policy_pattern(QStringLiteral("market:quote:*"), quote_p);

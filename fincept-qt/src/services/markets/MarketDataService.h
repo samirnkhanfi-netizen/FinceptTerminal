@@ -179,7 +179,10 @@ class MarketDataService : public QObject, public fincept::datahub::Producer {
     bool hub_registered_ = false;
 
     // ── Caching — delegated to CacheManager ──
-    static constexpr int kQuoteCacheTtlSec = 30;
+    // Mirrors the market:quote:* DataHub TopicPolicy TTL (see
+    // ensure_registered_with_hub()) so the one-shot fetch_quotes() callback
+    // path and the subscription path age out at the same rate.
+    static constexpr int kQuoteCacheTtlSec = 5;
 };
 
 } // namespace fincept::services
