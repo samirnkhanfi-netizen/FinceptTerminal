@@ -4,11 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Fincept Live Price Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600&family=Karla:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
 <header>
-  <h1>Fincept &middot; Live Market Dashboard</h1>
+  <h1>Fincept</h1>
+  <span id="header-subtitle">Live Market Dashboard</span>
   <span id="status">loading&hellip;</span>
 </header>
 
@@ -24,7 +28,7 @@
     <div class="editbar">
       <input id="symbols-input" placeholder="AAPL, MSFT, TSLA, RELIANCE.NS, BTC-USD ..." autocomplete="off">
       <button id="update-btn">Update List</button>
-      <button id="refresh-btn" class="ghost">Refresh Now</button>
+      <button id="refresh-btn" class="ghost">Refresh</button>
     </div>
     <table id="quote-table" class="data-table clickable">
       <thead>
@@ -35,21 +39,21 @@
       </thead>
       <tbody id="quote-body"></tbody>
     </table>
-    <p class="hint">Auto-refreshes every <span id="wl-interval-s">5</span>s. Click a row for candles, trend and full detail.</p>
+    <p class="hint">Auto-refreshes every <span id="wl-interval-s">5</span>s. Click a row for chart and detail.</p>
   </section>
 
   <!-- ── Macro tab ─────────────────────────────────────────────────── -->
   <section id="tab-macro" class="tab-panel">
     <h2 class="section-title">Market Signals</h2>
-    <p class="hint">Market-based macro proxies (indices, yields, FX, commodities) grouped by region. Click any row for its chart.</p>
+    <p class="hint">Indices, yields, FX and commodities by region. Click a row for its chart.</p>
     <div id="macro-groups"></div>
 
     <h2 class="section-title">Statistical Releases</h2>
+    <p class="hint">GDP growth, inflation and unemployment &mdash; official government figures, by region.</p>
     <div class="editbar">
-      <span class="hint inline">Official government-reported figures via World Bank Open Data &mdash; GDP growth, inflation (CPI), unemployment.</span>
+      <span id="stats-status" class="hint inline"></span>
       <button id="stats-refresh" class="ghost">Refresh</button>
     </div>
-    <p id="stats-status" class="hint"></p>
     <div id="stats-groups"></div>
   </section>
 
@@ -67,9 +71,8 @@
       <button id="corr-recompute">Recompute</button>
       <span id="corr-status" class="hint inline"></span>
     </div>
-    <p class="hint">Pearson correlation of daily returns: your watchlist vs. every macro signal above. Read as
-      "when this macro factor moves, this stock has historically moved &hellip;" &mdash; a statistical tendency,
-      not a prediction.</p>
+    <p class="hint">Correlation of daily returns: watchlist vs. every macro signal. Read as
+      "when this factor moves, this stock tends to move&hellip;" &mdash; a statistical tendency, not a prediction.</p>
     <div id="corr-table-wrap" class="scroll-x"></div>
     <div id="corr-drivers"></div>
   </section>
@@ -96,7 +99,7 @@
       </div>
       <span id="detail-trend" class="trend-badge"></span>
     </div>
-    <canvas id="detail-chart" width="900" height="320"></canvas>
+    <canvas id="detail-chart" width="760" height="300"></canvas>
     <div id="detail-info-grid" class="stat-grid"></div>
   </div>
 </div>

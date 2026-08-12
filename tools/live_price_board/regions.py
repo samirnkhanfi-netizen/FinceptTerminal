@@ -46,6 +46,12 @@ MACRO_GROUPS = {
         ("^FCHI", "France CAC 40"),
         ("^FTSE", "UK FTSE 100"),
         ("EURUSD=X", "EUR/USD"),
+        # Nordics — added per the design-refinement handoff (README.md there
+        # calls this out explicitly as a deliberate EU-group extension).
+        ("^OMXH25", "Finland OMX Helsinki 25"),
+        ("^OMX", "Sweden OMX Stockholm 30"),
+        ("^OSEAX", "Norway Oslo Exchange All-Share"),
+        ("^OMXC25", "Denmark OMX Copenhagen 25"),
     ],
     "Baltics": [
         ("TAL1T.TL", "Tallink Grupp (Tallinn)"),

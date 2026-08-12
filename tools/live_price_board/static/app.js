@@ -242,8 +242,9 @@ function renderStatistics(data) {
 function corrColor(v) {
   if (v === null || v === undefined) return null;
   const t = Math.min(1, Math.abs(v));
-  const rgb = v >= 0 ? "22,163,74" : "220,38,38";
-  return `rgba(${rgb},${(0.12 + 0.68 * t).toFixed(2)})`;
+  // Sage / terracotta, matching --positive/--negative in styles.css.
+  const rgb = v >= 0 ? "142,168,149" : "192,128,111";
+  return `rgba(${rgb},${(0.12 + 0.45 * t).toFixed(2)})`;
 }
 function corrStrength(v) {
   const a = Math.abs(v);
@@ -329,11 +330,11 @@ function drawChart(canvas, candles, sma) {
   const ctx = canvas.getContext("2d");
   const w = canvas.width, h = canvas.height;
   ctx.clearRect(0, 0, w, h);
-  ctx.fillStyle = "#080808";
+  ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, w, h);
   if (!candles || !candles.length) {
-    ctx.fillStyle = "#525252";
-    ctx.font = "13px Consolas, monospace";
+    ctx.fillStyle = "#8a8272";
+    ctx.font = "13px Karla, sans-serif";
     ctx.fillText("No historical data available", 16, h / 2);
     return;
   }
@@ -358,9 +359,9 @@ function drawChart(canvas, candles, sma) {
   const xFor = (i) => pad.left + slot * i + slot / 2;
 
   // gridlines + y-axis labels
-  ctx.strokeStyle = "#1a1a1a";
-  ctx.fillStyle = "#525252";
-  ctx.font = "10px Consolas, monospace";
+  ctx.strokeStyle = "#f0ebdf";
+  ctx.fillStyle = "#8a8272";
+  ctx.font = "10px Karla, sans-serif";
   const ticks = 5;
   for (let t = 0; t <= ticks; t++) {
     const v = minV + ((maxV - minV) * t) / ticks;
@@ -378,7 +379,7 @@ function drawChart(canvas, candles, sma) {
     if (c.open === null || c.close === null || c.high === null || c.low === null) continue;
     const x = xFor(i);
     const up = c.close >= c.open;
-    ctx.strokeStyle = ctx.fillStyle = up ? "#16a34a" : "#dc2626";
+    ctx.strokeStyle = ctx.fillStyle = up ? "#8ea895" : "#c0806f";
     ctx.beginPath();
     ctx.moveTo(x, yFor(c.high));
     ctx.lineTo(x, yFor(c.low));
@@ -390,8 +391,8 @@ function drawChart(canvas, candles, sma) {
   }
 
   // SMA trend line
-  ctx.strokeStyle = "#d97706";
-  ctx.lineWidth = 1.6;
+  ctx.strokeStyle = "#a8825e";
+  ctx.lineWidth = 1.4;
   ctx.beginPath();
   let started = false;
   for (let i = 0; i < n; i++) {
@@ -409,7 +410,7 @@ function drawChart(canvas, candles, sma) {
   ctx.lineWidth = 1;
 
   // x-axis date labels
-  ctx.fillStyle = "#525252";
+  ctx.fillStyle = "#8a8272";
   ctx.textAlign = "left";
   ctx.fillText(new Date(candles[0].timestamp * 1000).toLocaleDateString(), pad.left, h - 4);
   ctx.textAlign = "right";

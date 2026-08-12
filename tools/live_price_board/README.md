@@ -46,18 +46,31 @@ python tools/live_price_board/server.py --port 9000 --interval 5 --macro-interva
 - `--symbols` — comma-separated initial watchlist, only applied the first
   time (i.e. when `watchlist.json` doesn't exist yet)
 
+## Visual design
+
+Cream/editorial theme — Lora (headings/symbols) + Karla (body/data) via
+Google Fonts, sage/terracotta for positive/negative, hairline borders, no
+shadows or rounded cards. Replaced the prior dark "Obsidian" terminal
+theme per a design-refinement pass; region labels (Macro tab) rotate
+through a 4-color accent set in region order, pure CSS (`nth-of-type`), no
+JS. Google Fonts requires internet to load — if it's unreachable the page
+still works, it just falls back to the next font in the stack (serif /
+sans-serif), same graceful-degradation posture as the data endpoints
+below.
+
 ## Tabs
 
 **Watchlist** — live table (price, change, %, high, low, volume) for an
-editable symbol list, persisted to `watchlist.json`. **Refresh Now** forces
+editable symbol list, persisted to `watchlist.json`. **Refresh** forces
 an immediate re-fetch, bypassing the cache.
 
 **Macro** — two sections, live from two different real sources:
 - *Market Signals*: equity indices, bond-yield tickers, FX, commodities
   grouped by region (US, EU, Baltics, Asia, Global) — what markets are doing
-  right now, via yfinance. Baltic coverage (OMX Tallinn/Riga/Vilnius) is
-  best-effort — thin/illiquid tickers may come back with no data, same as
-  any unresolvable symbol elsewhere in the app.
+  right now, via yfinance. EU includes four Nordic indices (Finland, Sweden,
+  Norway, Denmark) alongside the core group. Baltic coverage (OMX
+  Tallinn/Riga/Vilnius) is best-effort — thin/illiquid tickers may come back
+  with no data, same as any unresolvable symbol elsewhere in the app.
 - *Statistical Releases*: official government-reported GDP growth,
   inflation (CPI), and unemployment per country, grouped into the same
   regions, live from the World Bank Open Data API (no key required) via
